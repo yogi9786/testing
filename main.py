@@ -9,7 +9,7 @@ load_dotenv()
 app = FastAPI()
 
 
-MONGO_URI = os.getenv("MONGO_URI")  
+MONGO_URI = os.getenv("mongodb://localhost:27017")  
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["contact_db"]
 collection = db["submissions"]
