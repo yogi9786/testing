@@ -19,6 +19,11 @@ class ContactForm(BaseModel):
     name: str
     email: EmailStr
     message: str
+    
+    
+@app.get("/")
+def read_root():
+    return {"message": "FastAPI backend is running successfully!"}
 
 # API endpoint to store form data
 @app.post("/submit")
