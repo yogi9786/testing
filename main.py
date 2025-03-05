@@ -19,7 +19,7 @@ db = client["your_database_name"]
 collection = db["your_collection_name"]
 
 # SendGrid API Key
-SENDGRID_API_KEY = ("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")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 FROM_EMAIL = "yogesh.v@xtransmatrix.com" 
 
 if not SENDGRID_API_KEY:
