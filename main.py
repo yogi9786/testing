@@ -20,7 +20,7 @@ collection = db["your_collection_name"]
 
 # SendGrid API Key
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = "yogesh.v@xtransmatrix.com" 
+FROM_EMAIL = os.getenv("email")
 
 if not SENDGRID_API_KEY:
     raise ValueError("SENDGRID_API_KEY is missing. Please check your .env file.")
