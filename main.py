@@ -5,6 +5,7 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+import traceback
 
 
 load_dotenv()
@@ -40,9 +41,10 @@ def submit_form(form: ContactForm):
     try:
         form_data = form.dict()
         result = collection.insert_one(form_data)
-        return {"message": "Form submitted successfully", "id": str(result.inserted_id)}
+        return {"message": " Form submitted successfully", "id": str(result.inserted_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to store data: {str(e)}")
+        print(" Error:", traceback.format_exc())  # Log detailed error
+        raise HTTPException(status_code=500, detail="Internal Server Error. Check logs for details.")
 
 @app.get("/submissions")
 def get_submissions():
