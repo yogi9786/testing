@@ -4,4 +4,6 @@ motor
 python-dotenv
 pydantic
 bcrypt
+email_validator
+
 
