@@ -6,6 +6,7 @@ pydantic
 bcrypt
 email_validator
 sendgrid
+python-multipart
 
 
 
