@@ -19,11 +19,12 @@ db = client["your_database_name"]
 collection = db["your_collection_name"]
 
 # SendGrid API Key
+if os.getenv("SENDGRID_API_KEY"):
+    print("SENDGRID_API_KEY loaded successfully!")
+else:
+    print("SENDGRID_API_KEY is missing!")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("email")
-
-if not SENDGRID_API_KEY:
-    raise ValueError("SENDGRID_API_KEY is missing. Please check your .env file.")
+FROM_EMAIL = "yogesh.v@xtransmatrix.com" 
 
 app = FastAPI()
 
