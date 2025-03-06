@@ -11,7 +11,8 @@ from sendgrid.helpers.mail import Mail
 from fastapi.responses import FileResponse
 import base64
 from bson import ObjectId
-from typing import List
+from typing import List, Optional
+from fastapi.params import Path
 
 
 load_dotenv()
@@ -19,9 +20,9 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
 db = client["your_database_name"]
-db = client["resume_db"]
+db = client["resume1_db"]
 collection = db["your_collection_name"]
-collection = db["resumes"]
+collection = db["resumes1"]
 
 if os.getenv("SENDGRID_API_KEY"):
     print("SENDGRID_API_KEY loaded successfully!")
@@ -46,10 +47,10 @@ class ContactForm(BaseModel):
     message: str
     
 class Resume(BaseModel):
-    name: str
-    phone: str
-    email: str
-    resume: str 
+   name: str
+   email: EmailStr
+   phone: Optional[str] = None  # Optional field
+   resume: Optional[str] = None  # Optional field
 
 
 @app.get("/")
@@ -110,6 +111,21 @@ def get_submissions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve data: {str(e)}")
     
+@app.delete("/delete/{submission_id}")
+def delete_submission(submission_id: str = Path(..., title="Submission ID")):
+    try:
+        if not ObjectId.is_valid(submission_id):
+            raise HTTPException(status_code=400, detail="Invalid submission ID format")
+        
+        result = collection.delete_one({"_id": ObjectId(submission_id)})
+
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        return {"message": "Submission deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete submission: {str(e)}")
+    
 @app.post("/upload/")
 async def upload_resume(
     name: str = Form(...),
@@ -118,11 +134,8 @@ async def upload_resume(
     resume: UploadFile = File(...),
 ):
     try:
-        # Read file as binary and encode in Base64
         binary_data = await resume.read()
         encoded_resume = base64.b64encode(binary_data).decode("utf-8")
-        
-        # Store in MongoDB
         resume_data = {
             "name": name,
             "phone": phone,
@@ -136,33 +149,38 @@ async def upload_resume(
 
 @app.get("/resumes/", response_model=List[Resume])
 def get_resumes():
-    resumes = list(collection.find({}, {"_id": 0}))  # Exclude MongoDB _id field
-    return resumes
+    try:
+        resumes = list(collection.find({}, {"_id": 0}))
+        return resumes
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/resume/{resume_id}")
 def get_resume(resume_id: str):
-    resume = collection.find_one({"_id": ObjectId(resume_id)})
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    resume["_id"] = str(resume["_id"])
-    return resume
+    try:
+        resume = collection.find_one({"_id": ObjectId(resume_id)})
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        resume["_id"] = str(resume["_id"])
+        return resume
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{resume_id}")
 def download_resume(resume_id: str):
-    resume = collection.find_one({"_id": ObjectId(resume_id)})
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    try:
+        resume = collection.find_one({"_id": ObjectId(resume_id)})
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
 
-    # Decode Base64 string back to binary
-    binary_data = base64.b64decode(resume["resume"])
-    
-    # Save to a temporary PDF file
-    file_path = f"temp_resume_{resume_id}.pdf"
-    with open(file_path, "wb") as f:
-        f.write(binary_data)
+        binary_data = base64.b64decode(resume["resume"])
+        file_path = f"temp_resume_{resume_id}.pdf"
+        with open(file_path, "wb") as f:
+            f.write(binary_data)
 
-    # Return the file as a response
-    return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
+        return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
