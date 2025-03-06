@@ -19,9 +19,9 @@ load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
-db = client["your_database_name"]
+db = client["your_database_name1"]
 db = client["resume1_db"]
-collection = db["your_collection_name"]
+collection = db["your_collection_name1"]
 collection = db["resumes1"]
 
 # Update documents where phone or resume is None
@@ -151,16 +151,19 @@ async def upload_resume(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/resumes/", response_model=List[Resume])
+@app.get("/resumes/")
 def get_resumes():
-    resumes = list(collection.find({}, {"_id": 0}))
-
-    for resume in resumes:
-        if "email" in resume and not isinstance(resume["email"], str) or "@" not in resume["email"]:
-            resume["email"] = None  # Set invalid emails to None
-
-    return resumes
-
+    resumes = collection.find({}, {"name": 1, "phone": 1, "email": 1, "resume": 1})
+    return [
+        {
+            "user_id": str(resume["_id"]),  # Add this field to frontend
+            "name": resume["name"],
+            "phone": resume["phone"],
+            "email": resume["email"],
+            "resume_id": str(resume["_id"]),
+        }
+        for resume in resumes
+    ]  
 
 
 
