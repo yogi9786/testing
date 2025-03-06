@@ -24,7 +24,7 @@ if os.getenv("SENDGRID_API_KEY"):
 else:
     print("SENDGRID_API_KEY is missing!")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = "yogesh.v@xtransmatrix.com" 
+FROM_EMAIL = os.getenv("FROM_EMAIL")
 
 app = FastAPI()
 
