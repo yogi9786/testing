@@ -24,6 +24,10 @@ db = client["resume1_db"]
 collection = db["your_collection_name"]
 collection = db["resumes1"]
 
+# Update documents where phone or resume is None
+collection.update_many({"phone": None}, {"$set": {"phone": ""}})
+collection.update_many({"resume": None}, {"$set": {"resume": ""}})
+
 if os.getenv("SENDGRID_API_KEY"):
     print("SENDGRID_API_KEY loaded successfully!")
 else:
@@ -47,10 +51,10 @@ class ContactForm(BaseModel):
     message: str
     
 class Resume(BaseModel):
-   name: str
-   email: EmailStr
-   phone: Optional[str] = None  # Optional field
-   resume: Optional[str] = None  # Optional field
+    name: str
+    phone: str | None = None
+    email: str | None = None  # Change from EmailStr to str to avoid validation errors
+    resume: str | None = None
 
 
 @app.get("/")
@@ -130,7 +134,7 @@ def delete_submission(submission_id: str = Path(..., title="Submission ID")):
 async def upload_resume(
     name: str = Form(...),
     phone: str = Form(...),
-    email: str = Form(...),
+    email: EmailStr = Form(...),
     resume: UploadFile = File(...),
 ):
     try:
@@ -149,11 +153,16 @@ async def upload_resume(
 
 @app.get("/resumes/", response_model=List[Resume])
 def get_resumes():
-    try:
-        resumes = list(collection.find({}, {"_id": 0}))
-        return resumes
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    resumes = list(collection.find({}, {"_id": 0}))
+
+    for resume in resumes:
+        if "email" in resume and not isinstance(resume["email"], str) or "@" not in resume["email"]:
+            resume["email"] = None  # Set invalid emails to None
+
+    return resumes
+
+
+
 
 @app.get("/resume/{resume_id}")
 def get_resume(resume_id: str):
