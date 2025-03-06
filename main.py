@@ -9,16 +9,13 @@ import traceback
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
-# Load environment variables
 load_dotenv()
 
-# MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
 db = client["your_database_name"]
 collection = db["your_collection_name"]
 
-# SendGrid API Key
 if os.getenv("SENDGRID_API_KEY"):
     print("SENDGRID_API_KEY loaded successfully!")
 else:
