@@ -323,6 +323,26 @@ def download_resume(resume_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+@app.get("/view-resume/{resume_id}")
+def view_resume(resume_id: str):
+    try:
+        if not ObjectId.is_valid(resume_id):
+            raise HTTPException(status_code=400, detail="Invalid resume ID format")
+
+        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"_id": 1, "name": 1, "phone": 1, "email": 1, "resume": 1})
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
+
+        return {
+            "user_id": str(resume["_id"]),
+            "name": resume["name"],
+            "phone": resume["phone"],
+            "email": resume["email"],
+            "resume": resume["resume"], 
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500,detail=str(e))
+    
 # Delete a resume
 @app.delete("/delete/{resume_id}")
 def delete_resume(resume_id: str):
