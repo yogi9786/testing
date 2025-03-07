@@ -71,7 +71,7 @@ class ContactForm(BaseModel):
     message: str
 
 class Resume(BaseModel):
-    id: Optional[str] = None  # Add id field
+    id: str
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -280,14 +280,13 @@ async def upload_resume(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Get all resumes
 @app.get("/resumes/", response_model=List[Resume])
 def get_resumes():
     resumes = list(resume_collection.find({}, {"_id": 1, "name": 1, "phone": 1, "email": 1, "role": 1, "applied_at": 1}))
 
     return [
         Resume(
-            user_id=str(resume["_id"]),  # Convert ObjectId to string
+            id=str(resume["_id"]),  # Convert ObjectId to string
             name=resume.get("name", "N/A"),
             phone=resume.get("phone", "N/A"),
             email=resume.get("email", "N/A"),
@@ -301,10 +300,18 @@ def get_resumes():
 @app.get("/resume/{resume_id}", response_model=Resume)
 def get_resume(resume_id: str):
     try:
-        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"_id": 0})
+        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"_id": 1, "name": 1, "phone": 1, "email": 1, "role": 1, "applied_at": 1})
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
-        return resume
+        
+        return Resume(
+            id=str(resume["_id"]),  # Ensure `id` is returned
+            name=resume["name"],
+            phone=resume.get("phone", None),
+            email=resume["email"],
+            role=resume["role"],
+            applied_at=resume["applied_at"],
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -324,7 +331,8 @@ def download_resume(resume_id: str):
         return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+# View Resume
 @app.get("/view-resume/{resume_id}")
 def view_resume(resume_id: str):
     try:
@@ -336,15 +344,15 @@ def view_resume(resume_id: str):
             raise HTTPException(status_code=404, detail="Resume not found")
 
         return {
-            "user_id": str(resume["_id"]),
+            "id": str(resume["_id"]),  # Ensure `id` is included
             "name": resume["name"],
             "phone": resume["phone"],
             "email": resume["email"],
             "resume": resume["resume"], 
         }
     except Exception as e:
-        raise HTTPException(status_code=500,detail=str(e))
-    
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Delete a resume
 @app.delete("/delete/{resume_id}")
 def delete_resume(resume_id: str):
