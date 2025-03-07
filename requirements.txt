@@ -7,6 +7,8 @@ bcrypt
 email_validator
 sendgrid
 python-multipart
+pandas
+openpyxl
 
 
 
