@@ -11,6 +11,8 @@ import traceback
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
+import io
 import base64
 from bson import ObjectId
 from typing import List, Optional
@@ -279,22 +281,24 @@ def get_resume(resume_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Download Resume
 @app.get("/download/{resume_id}")
-def download_resume(resume_id: str):
+def download_resume_file(resume_id: str):
     try:
         resume = resume_collection.find_one({"_id": ObjectId(resume_id)})
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
 
         binary_data = base64.b64decode(resume["resume"])
-        file_path = f"temp_resume_{resume_id}.pdf"
-        with open(file_path, "wb") as f:
-            f.write(binary_data)
 
-        return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
+        return StreamingResponse(
+            io.BytesIO(binary_data), 
+            media_type="application/pdf", 
+            headers={"Content-Disposition": "attachment; filename=resume.pdf"}
+        )
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("Error downloading resume:", e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
     
 @app.get("/career/excel")
 def export_users_to_excel():
