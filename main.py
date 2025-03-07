@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 import io
 import base64
 from bson import ObjectId
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi.params import Path
 import pandas as pd
 
@@ -139,7 +139,7 @@ def submit_contact_form(form: ContactForm):
 
 # Get all contact form submissions
 @app.get("/submissions", response_model=List[dict])
-def get_contact_submissions():
+def get_contact_submissions():  
     try:
         submissions = list(contact_collection.find({}, {"_id": 1, "name": 1, "email": 1, "message": 1}))
 
@@ -297,7 +297,24 @@ def download_resume(resume_id: str):
         return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
+@app.get("/resume/view/{resume_id}", response_model=Dict[str, int])
+def view_resume(resume_id: str):
+    try:
+        resume = resume_collection.find_one({"_id": ObjectId(resume_id)})
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        
+        # Increment the view count
+        new_views = resume.get("views", 0) + 1
+        resume_collection.update_one({"_id": ObjectId(resume_id)}, {"$set": {"views": new_views}})
+        
+        return {"views": new_views}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/career/excel")
 def export_users_to_excel():
     try:
