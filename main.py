@@ -1,7 +1,7 @@
 import datetime
 import os
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Response
-from pydantic import BaseModel, EmailStr, constr, Field
+from pydantic import BaseModel, EmailStr
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
@@ -11,8 +11,6 @@ import traceback
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from fastapi.responses import FileResponse
-from fastapi.responses import StreamingResponse
-import io
 import base64
 from bson import ObjectId
 from typing import List, Optional
@@ -62,25 +60,28 @@ class IgnoreFaviconMiddleware(BaseHTTPMiddleware):
 app.add_middleware(IgnoreFaviconMiddleware)
 
 def get_ist_time():
-    """Returns the current time in IST (Indian Standard Time, UTC+5:30)."""
-    return datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    """Returns the current date in IST (Indian Standard Time, UTC+5:30)."""
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).date()
+    
+
 
 class ContactForm(BaseModel):
     name: str
     email: EmailStr
     message: str
 
-PhoneConstr = constr(pattern=r'^\+?[1-9]\d{1,14}$')
-
 class Resume(BaseModel):
-    id: Optional[str] = None 
     name: str
-    phone_number: Optional[str] = None
+    phone: Optional[str] = None
     email: Optional[str] = None
     role: str
-    applied_at: datetime.datetime = get_ist_time()
+    applied_at: datetime.datetime
     resume: Optional[str] = None
-
+    
+def get_ist_time():
+    """Returns the current date in IST (Indian Standard Time, UTC+5:30)."""
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).date()
+    
 def send_email(to_email: str, name: str, message: str):
     """Function to send email using SendGrid."""
     try:
@@ -128,23 +129,43 @@ def send_email(to_email: str, subject: str, content: str):
 def read_root():
     return {"message": "FastAPI backend is running successfully with MongoDB Atlas!"}
 
-
+# Contact Form Submission API
 @app.post("/submit")
 def submit_contact_form(form: ContactForm):
     try:
         form_data = form.dict()
         result = contact_collection.insert_one(form_data)
 
-        send_email(form.email, form.name, form.message)
+        email_content = f"""
+        <html>
+            <body>
+                <h2>Hello {form.name},</h2>
+                <p>Thank you for reaching out to us!</p>
+                <p>Your message: {form.message}</p>
+                <p>We will get back to you soon.</p>
+                <br>
+                <p>Best Regards,<br>XTRANSMATRIX CONSULTING SERVICES PVT LTD</p>
+            </body>
+        </html>
+        """
 
+        mail = Mail(
+            from_email=FROM_EMAIL,
+            to_emails=form.email,
+            subject="Thank you for contacting us!",
+            html_content=email_content
+        )
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(mail)
         return {"message": "Contact form submitted successfully", "id": str(result.inserted_id)}
     except Exception as e:
         print("Error:", traceback.format_exc())  
         raise HTTPException(status_code=500, detail="Internal Server Error. Check logs for details.")
 
-
+# Get all contact form submissions
 @app.get("/submissions", response_model=List[dict])
-def get_contact_submissions():  
+def get_contact_submissions():
     try:
         submissions = list(contact_collection.find({}, {"_id": 1, "name": 1, "email": 1, "message": 1}))
 
@@ -201,10 +222,11 @@ def delete_contact_submission(submission_id: str = Path(..., title="Submission I
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete submission: {str(e)}")
 
+
 @app.post("/upload/", response_model=dict)
 async def upload_resume(
     name: str = Form(...),
-    phone: str =  Form(...),
+    phone: str = Form(...),
     email: EmailStr = Form(...),
     role: str = Form(...),
     resume: UploadFile = File(...),
@@ -220,12 +242,11 @@ async def upload_resume(
             phone=phone,
             email=email,
             role=role,
-            applied_at=datetime.datetime.utcnow(),
+            applied_at=datetime.datetime.now(datetime.timezone.utc),
             resume=encoded_resume
-        ).dict(exclude={"id"})  # Exclude `id` before inserting into MongoDB
-        
+        ).dict()
         result = resume_collection.insert_one(resume_data)
-        resume_id = str(result.inserted_id)  # Convert ObjectId to string
+        resume_id = str(result.inserted_id)
 
         # Generate Resume Download URL
         resume_url = f"http://localhost:8000/download/{resume_id}"  # Change to your hosted URL
@@ -238,7 +259,7 @@ async def upload_resume(
         <p>Best regards,</p>
         <p><strong>Xtransmatrix Consulting Services Pvt Ltd</strong></p>
         """
-        send_email(email, "Application Received - Xtransmatrix", user_email_content)
+        send_email(email, "Thank you for Applying - {role} at xTransMatrix ", user_email_content)
 
         # Send Email to Admin
         admin_email_content = f"""
@@ -264,16 +285,15 @@ def get_resumes():
 
     return [
         Resume(
-            id=str(resume["_id"]),  # Convert ObjectId to string and assign to `id`
+            user_id=str(resume["_id"]),  # Convert ObjectId to string
             name=resume.get("name", "N/A"),
             phone=resume.get("phone", "N/A"),
             email=resume.get("email", "N/A"),
             role=resume.get("role", "N/A"),
-            applied_at=resume.get("applied_at", get_ist_time()),
+            applied_at=resume.get("applied_at", datetime.datetime.utcnow()),
         )
         for resume in resumes
     ]
-
 
 # Get a specific resume
 @app.get("/resume/{resume_id}", response_model=Resume)
@@ -302,30 +322,18 @@ def download_resume(resume_id: str):
         return FileResponse(file_path, media_type="application/pdf", filename="resume.pdf")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/resume/view/{resume_id}")
-def view_resume(resume_id: str):
+    
+# Delete a resume
+@app.delete("/delete/{resume_id}")
+def delete_resume(resume_id: str):
     try:
-        resume = resume_collection.find_one({"_id": ObjectId(resume_id)})
-        if not resume:
+        result = resume_collection.delete_one({"_id": ObjectId(resume_id)})
+        if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Resume not found")
-        
-        new_views = resume.get("views", 0) + 1
-        ist_time = get_ist_time()
-        
-        resume_collection.update_one(
-            {"_id": ObjectId(resume_id)},
-            {"$set": {"views": new_views, "last_viewed_at": ist_time}}
-        )
-        
-        binary_data = base64.b64decode(resume["resume"])
-        return StreamingResponse(io.BytesIO(binary_data), media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
+        return {"message": "Resume deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
+    
 @app.get("/career/excel")
 def export_users_to_excel():
     try:
