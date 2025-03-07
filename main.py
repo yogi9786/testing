@@ -1,7 +1,7 @@
 import datetime
 import os
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Response
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, constr, Field
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 import io
 import base64
 from bson import ObjectId
-from typing import Dict, List, Optional
+from typing import List, Optional
 from fastapi.params import Path
 import pandas as pd
 
@@ -61,21 +61,26 @@ class IgnoreFaviconMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(IgnoreFaviconMiddleware)
 
+def get_ist_time():
+    """Returns the current time in IST (Indian Standard Time, UTC+5:30)."""
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+
 class ContactForm(BaseModel):
     name: str
     email: EmailStr
     message: str
 
+PhoneConstr = constr(pattern=r'^\+?[1-9]\d{1,14}$')
+
 class Resume(BaseModel):
-    id: Optional[str] = None  # Add this line to include the resume ID
+    id: Optional[str] = None 
     name: str
-    phone: Optional[str] = None
+    phone_number: Optional[str] = None
     email: Optional[str] = None
     role: str
-    applied_at: datetime.datetime = datetime.datetime.utcnow()
+    applied_at: datetime.datetime = get_ist_time()
     resume: Optional[str] = None
 
-    
 def send_email(to_email: str, name: str, message: str):
     """Function to send email using SendGrid."""
     try:
@@ -123,7 +128,7 @@ def send_email(to_email: str, subject: str, content: str):
 def read_root():
     return {"message": "FastAPI backend is running successfully with MongoDB Atlas!"}
 
-# Contact Form Submission API
+
 @app.post("/submit")
 def submit_contact_form(form: ContactForm):
     try:
@@ -137,7 +142,7 @@ def submit_contact_form(form: ContactForm):
         print("Error:", traceback.format_exc())  
         raise HTTPException(status_code=500, detail="Internal Server Error. Check logs for details.")
 
-# Get all contact form submissions
+
 @app.get("/submissions", response_model=List[dict])
 def get_contact_submissions():  
     try:
@@ -199,7 +204,7 @@ def delete_contact_submission(submission_id: str = Path(..., title="Submission I
 @app.post("/upload/", response_model=dict)
 async def upload_resume(
     name: str = Form(...),
-    phone: str = Form(...),
+    phone: str =  Form(...),
     email: EmailStr = Form(...),
     role: str = Form(...),
     resume: UploadFile = File(...),
@@ -264,7 +269,7 @@ def get_resumes():
             phone=resume.get("phone", "N/A"),
             email=resume.get("email", "N/A"),
             role=resume.get("role", "N/A"),
-            applied_at=resume.get("applied_at", datetime.datetime.utcnow()),
+            applied_at=resume.get("applied_at", get_ist_time()),
         )
         for resume in resumes
     ]
@@ -306,15 +311,19 @@ def view_resume(resume_id: str):
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
         
-        # Increment the view count
         new_views = resume.get("views", 0) + 1
-        resume_collection.update_one({"_id": ObjectId(resume_id)}, {"$set": {"views": new_views}})
+        ist_time = get_ist_time()
         
-        # Decode the resume from base64
+        resume_collection.update_one(
+            {"_id": ObjectId(resume_id)},
+            {"$set": {"views": new_views, "last_viewed_at": ist_time}}
+        )
+        
         binary_data = base64.b64decode(resume["resume"])
         return StreamingResponse(io.BytesIO(binary_data), media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/career/excel")
