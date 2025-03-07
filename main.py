@@ -71,12 +71,14 @@ class ContactForm(BaseModel):
     message: str
 
 class Resume(BaseModel):
+    id: Optional[str] = None  # Add id field
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
     role: str
     applied_at: datetime.datetime
     resume: Optional[str] = None
+
     
 def get_ist_time():
     """Returns the current date in IST (Indian Standard Time, UTC+5:30)."""
