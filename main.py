@@ -299,7 +299,7 @@ def download_resume(resume_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/resume/view/{resume_id}", response_model=Dict[str, int])
+@app.get("/resume/view/{resume_id}")
 def view_resume(resume_id: str):
     try:
         resume = resume_collection.find_one({"_id": ObjectId(resume_id)})
@@ -310,7 +310,9 @@ def view_resume(resume_id: str):
         new_views = resume.get("views", 0) + 1
         resume_collection.update_one({"_id": ObjectId(resume_id)}, {"$set": {"views": new_views}})
         
-        return {"views": new_views}
+        # Decode the resume from base64
+        binary_data = base64.b64decode(resume["resume"])
+        return StreamingResponse(io.BytesIO(binary_data), media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
