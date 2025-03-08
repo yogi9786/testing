@@ -1,4 +1,5 @@
 import datetime
+import io
 import os
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Response
 from pydantic import BaseModel, EmailStr
@@ -10,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import traceback
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 import base64
 from bson import ObjectId
 from typing import List, Optional
@@ -71,7 +72,7 @@ class ContactForm(BaseModel):
     message: str
 
 class Resume(BaseModel):
-    id: str
+    id: Optional[str] = None  # Make id optional
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -239,19 +240,19 @@ async def upload_resume(
         encoded_resume = base64.b64encode(binary_data).decode("utf-8")
 
         # Store in MongoDB
-        resume_data = Resume(
-            name=name,
-            phone=phone,
-            email=email,
-            role=role,
-            applied_at=datetime.datetime.now(datetime.timezone.utc),
-            resume=encoded_resume
-        ).dict()
+        resume_data = {
+            "name": name,
+            "phone": phone,
+            "email": email,
+            "role": role,
+            "applied_at": datetime.datetime.now(datetime.timezone.utc),
+            "resume": encoded_resume,
+        }
         result = resume_collection.insert_one(resume_data)
-        resume_id = str(result.inserted_id)
+        resume_id = str(result.inserted_id)  # Convert ObjectId to string
 
         # Generate Resume Download URL
-        resume_url = f"http://localhost:8000/download/{resume_id}"  # Change to your hosted URL
+        resume_url = f"http://localhost:8000/download/{resume_id}"  # Update with your hosted URL
 
         # Send Email to User
         user_email_content = f"""
@@ -261,7 +262,7 @@ async def upload_resume(
         <p>Best regards,</p>
         <p><strong>Xtransmatrix Consulting Services Pvt Ltd</strong></p>
         """
-        send_email(email, "Thank you for Applying - {role} at xTransMatrix ", user_email_content)
+        send_email(email, f"Thank you for Applying - {role} at xTransMatrix", user_email_content)
 
         # Send Email to Admin
         admin_email_content = f"""
@@ -279,6 +280,7 @@ async def upload_resume(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/resumes/", response_model=List[Resume])
 def get_resumes():
@@ -332,38 +334,24 @@ def download_resume(resume_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# View Resume
-@app.get("/view-resume/{resume_id}")
+@app.get("/view/{resume_id}")
 def view_resume(resume_id: str):
     try:
-        if not ObjectId.is_valid(resume_id):
-            raise HTTPException(status_code=400, detail="Invalid resume ID format")
-
-        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"_id": 1, "name": 1, "phone": 1, "email": 1, "resume": 1})
-        if not resume:
+        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"resume": 1})
+        if not resume or "resume" not in resume:
             raise HTTPException(status_code=404, detail="Resume not found")
 
-        return {
-            "id": str(resume["_id"]),  # Ensure `id` is included
-            "name": resume["name"],
-            "phone": resume["phone"],
-            "email": resume["email"],
-            "resume": resume["resume"], 
-        }
+        # Decode the base64-encoded PDF
+        binary_data = base64.b64decode(resume["resume"])
+
+        # Create an in-memory file-like object
+        pdf_stream = io.BytesIO(binary_data)
+
+        return StreamingResponse(pdf_stream, media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Delete a resume
-@app.delete("/delete/{resume_id}")
-def delete_resume(resume_id: str):
-    try:
-        result = resume_collection.delete_one({"_id": ObjectId(resume_id)})
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Resume not found")
-        return {"message": "Resume deleted successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
 @app.get("/career/excel")
 def export_users_to_excel():
     try:
