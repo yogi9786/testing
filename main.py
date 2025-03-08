@@ -334,7 +334,7 @@ def download_resume(resume_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/view/{resume_id}")
+@app.get("resume/view/{submission.id}")
 def view_resume(resume_id: str):
     try:
         resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"resume": 1})
