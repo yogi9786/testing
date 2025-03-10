@@ -17,6 +17,9 @@ from bson import ObjectId
 from typing import List, Optional
 from fastapi.params import Path
 import pandas as pd
+import openpyxl
+from openpyxl.styles import Font
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 load_dotenv()
 
@@ -334,36 +337,77 @@ def download_resume(resume_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("resume/view/{submission.id}")
+@app.get("/view/{resume_id}")
 def view_resume(resume_id: str):
     try:
-        resume = resume_collection.find_one({"_id": ObjectId(resume_id)}, {"resume": 1})
-        if not resume or "resume" not in resume:
+        resume = resume_collection.find_one({"_id": ObjectId(resume_id)})
+        if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
 
-        # Decode the base64-encoded PDF
         binary_data = base64.b64decode(resume["resume"])
+        file_path = f"temp_resume_{resume_id}.pdf"
+        with open(file_path, "wb") as f:
+            f.write(binary_data)
 
-        # Create an in-memory file-like object
-        pdf_stream = io.BytesIO(binary_data)
-
-        return StreamingResponse(pdf_stream, media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
-
+        # Return file with inline disposition (opens in browser)
+        return FileResponse(file_path, media_type="application/pdf", headers={"Content-Disposition": "inline; filename=resume.pdf"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.delete("/delete/{resume_id}")
+def delete_resume(resume_id: str):
+    try:
+        result = resume_collection.delete_one({"_id": ObjectId(resume_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        
+        return {"message": "Resume deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/career/excel")
 def export_users_to_excel():
     try:
-        users = list(resume_collection.find({}, {"_id": 0}))  # Exclude `_id` field for clean export
+        users = list(resume_collection.find({}, {"_id": 1, "name": 1, "phone": 1, "email": 1, "role": 1, "applied_at": 1}))  
 
         if not users:
             raise HTTPException(status_code=404, detail="No data found to export.")
 
+        base_url = "https://xtmx-career-backend-3.onrender.com"
+
+        # Prepare data for DataFrame
+        for user in users:
+            user["id"] = str(user["_id"])
+            del user["_id"]  # Remove ObjectId field
+            user["Download Link"] = f"{base_url}/download/{user['id']}"
+            user["View Link"] = f"{base_url}/resume/{user['id']}"
+
         df = pd.DataFrame(users)
 
         file_path = "user_data.xlsx"
-        df.to_excel(file_path, index=False, engine="openpyxl")  # Ensure openpyxl is used
+        df.to_excel(file_path, index=False, engine="openpyxl")  
+
+        # Open the Excel file and format the hyperlinks
+        wb = openpyxl.load_workbook(file_path)
+        ws = wb.active
+
+        # Find column indices for Download and View Links
+        download_col = df.columns.get_loc("Download Link") + 1
+        view_col = df.columns.get_loc("View Link") + 1
+
+        # Apply hyperlink format
+        for row in range(2, len(users) + 2):  # Start from row 2 (Excel headers in row 1)
+            download_cell = ws.cell(row=row, column=download_col)
+            view_cell = ws.cell(row=row, column=view_col)
+
+            download_cell.hyperlink = download_cell.value
+            download_cell.font = Font(color="0000FF", underline="single")
+
+            view_cell.hyperlink = view_cell.value
+            view_cell.font = Font(color="0000FF", underline="single")
+
+        wb.save(file_path)  # Save the updated file
 
         return FileResponse(file_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename="user_data.xlsx")
 
