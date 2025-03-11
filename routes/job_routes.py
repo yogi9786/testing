@@ -24,7 +24,7 @@ def get_jobs():
         for job in jobs
     ]
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobsget/{job_id}")
 def get_job(job_id: str):
     job = job_collection.find_one({"_id": ObjectId(job_id)})
     if not job:
@@ -36,14 +36,14 @@ def get_job(job_id: str):
         "location": job["location"]
     }
 
-@router.put("/jobs/{job_id}")
+@router.put("/jobsput/{job_id}")
 def update_job(job_id: str, updated_data: JobData):
     result = job_collection.update_one({"_id": ObjectId(job_id)}, {"$set": updated_data.dict()})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"message": "Job data updated successfully"}
 
-@router.delete("/jobs/{job_id}")
+@router.delete("/jobsdelete/{job_id}")
 def delete_job(job_id: str):
     result = job_collection.delete_one({"_id": ObjectId(job_id)})
     if result.deleted_count == 0:
