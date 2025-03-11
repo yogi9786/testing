@@ -5,7 +5,7 @@ from bson import ObjectId
 
 router = APIRouter()
 
-@router.post("/jobs/")
+@router.post("/jobsend/")
 def create_job_data(job_data: JobData):
     data = job_data.dict()
     result = job_collection.insert_one(data)
